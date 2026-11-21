@@ -127,7 +127,7 @@
       if (!inRange(s.date, from, to)) return;
       parseItems(s).forEach((it) => {
         const key = String(it.id);
-        if (!map[key]) map[key] = { id: it.id, name: it.name, qty: 0, revenue: 0, profit: 0 };
+        if (!map[key]) map[key] = { id: it.id, name: it.name, unit: it.unit || '', qty: 0, revenue: 0, profit: 0 };
         map[key].qty += U.num(it.qty);
         map[key].revenue += U.num(it.sell) * U.num(it.qty);
         map[key].profit += (U.num(it.sell) - U.num(it.cost)) * U.num(it.qty);
