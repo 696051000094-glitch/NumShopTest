@@ -453,7 +453,8 @@ function adjustStock(id, delta) {
   var change = num(delta);
   if (!isFinite(change) || change === 0) throw new Error('จำนวนปรับสต็อกไม่ถูกต้อง');
   var next = current + change;
-  if (next < 0) throw new Error('สต็อกไม่พอ (' + current + ' ชิ้น)');
+  if (/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(sh.getRange(row, 5).getValue() || '').trim())) next = Math.round(next * 1000) / 1000;
+  if (next < 0) throw new Error('สต็อกไม่พอ (' + current + ')');
   sh.getRange(row, 8).setValue(next);
   sh.getRange(row, 12).setValue(nowIso());
   return { ok: true, stock: next };
@@ -479,7 +480,8 @@ function adjustStocks(adjustments) {
     var index = byId[id];
     var current = num(values[index][7]);
     var next = current + delta;
-    if (next < 0) throw new Error('สต็อกไม่พอสำหรับ ' + String(values[index][2] || id) + ' (' + current + ' ชิ้น)');
+    if (/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(values[index][4] || '').trim())) next = Math.round(next * 1000) / 1000;
+    if (next < 0) throw new Error('สต็อกไม่พอสำหรับ ' + String(values[index][2] || id) + ' (' + current + ')');
     seen[id] = true;
     changes.push({ id: id, index: index, stock: next });
   });
@@ -526,6 +528,10 @@ function createSale(sale) {
     if (!prod) throw new Error('ไม่พบสินค้าบางรายการ');
     var qty = num(it.qty);
     if (qty <= 0) throw new Error('จำนวนไม่ถูกต้อง');
+    if (/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(prod.unit || '').trim())) {
+      if (Math.abs(qty * 1000 - Math.round(qty * 1000)) > 0.000001) throw new Error('น้ำหนัก ' + prod.name + ' ต้องระบุไม่เกิน 3 ตำแหน่งทศนิยม');
+      qty = Math.round(qty * 1000) / 1000;
+    }
     var stock = num(prod.stock);
     if (qty > stock) throw new Error('สต็อกไม่พอ: ' + prod.name + ' (เหลือ ' + stock + ')');
     var line = {
@@ -551,7 +557,9 @@ function createSale(sale) {
   items.forEach(function (it) {
     var row = findRowById(pSheet, it.id);
     var stock = num(pSheet.getRange(row, 8).getValue());
-    pSheet.getRange(row, 8).setValue(stock - it.qty);
+    var remaining = stock - it.qty;
+    if (/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(it.unit || '').trim())) remaining = Math.round(remaining * 1000) / 1000;
+    pSheet.getRange(row, 8).setValue(remaining);
     pSheet.getRange(row, 12).setValue(nowIso());
   });
   SpreadsheetApp.flush();
@@ -599,7 +607,9 @@ function deleteSale(id) {
       var prow = findRowById(pSheet, it.id);
       if (prow > 0) {
         var stock = num(pSheet.getRange(prow, 8).getValue());
-        pSheet.getRange(prow, 8).setValue(stock + num(it.qty));
+        var restored = stock + num(it.qty);
+        if (/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(pSheet.getRange(prow, 5).getValue() || '').trim())) restored = Math.round(restored * 1000) / 1000;
+        pSheet.getRange(prow, 8).setValue(restored);
         pSheet.getRange(prow, 12).setValue(nowIso());
       }
     });
