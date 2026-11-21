@@ -147,7 +147,7 @@
           ${delta ? `<span class="stock-delta ${delta > 0 ? 'positive' : 'negative'}">${delta > 0 ? '+' : ''}${U.fmtInt(delta)}</span>` : '<span class="caption">ยังไม่เปลี่ยน</span>'}
           ` : `<span class="inventory-stock-value ${low ? 'text-error' : ''}">${U.fmtInt(stock)} <small>${U.esc(p.unit || 'ชิ้น')}</small></span>`}
         </div>
-        <div class="caption" style="text-align:right;min-width:70px;">ต้นทุน <b class="text-primary">${U.fmtMoney(p.cost)}</b><br>ขาย <b>${U.fmtMoney(p.sell)}</b></div>
+        <div class="caption" style="text-align:right;min-width:70px;">ต้นทุน <b class="text-primary">${U.fmtMoney(p.cost)}</b>${/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(p.unit || '').trim()) ? ' / กก.' : ''}<br>ขาย <b>${U.fmtMoney(p.sell)}</b>${/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(p.unit || '').trim()) ? ' / กก.' : ''}</div>
         <div style="display:${stockEditing ? 'none' : 'flex'};gap:4px;">
           <button class="btn-icon" data-edit="${U.esc(p.id)}" aria-label="แก้ไข ${U.esc(p.name)}">${UI.icon('edit')}</button>
           <button class="btn-icon" data-del="${U.esc(p.id)}" aria-label="ลบ ${U.esc(p.name)}">${UI.icon('delete', 'text-error')}</button>
@@ -281,20 +281,20 @@
           </div>
         </div>
         <div class="field">
-          <label>หน่วย (ชิ้น/ขวด/ถุง...)</label>
+          <label>หน่วย (สินค้าทั่วไปใช้ชิ้น / สินค้าชั่งน้ำหนักใช้ กก.)</label>
           <input class="input" id="f-unit" type="text" value="${p ? U.esc(p.unit || '') : 'ชิ้น'}" placeholder="ชิ้น">
         </div>
         <div class="field">
-          <label>ต้นทุน/หน่วย (บาท)</label>
+          <label id="f-cost-label">ต้นทุน/หน่วย (บาท)</label>
           <input class="input" id="f-cost" type="number" min="0" step="0.01" value="${p ? p.cost : ''}" placeholder="0.00">
         </div>
         <div class="field">
-          <label>ราคาขาย/หน่วย (บาท)</label>
+          <label id="f-sell-label">ราคาขาย/หน่วย (บาท)</label>
           <input class="input" id="f-sell" type="number" min="0" step="0.01" value="${p ? p.sell : ''}" placeholder="0.00">
         </div>
         <div class="field">
           <label>สต็อกเริ่มต้น/แก้ไข</label>
-          <input class="input" id="f-stock" type="number" min="0" value="${p ? p.stock : '0'}">
+          <input class="input" id="f-stock" type="number" min="0" step="${p && /^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(p.unit || '').trim()) ? '0.001' : '1'}" value="${p ? p.stock : '0'}">
         </div>
         <div class="field">
           <label>สต็อกขั้นต่ำ (เตือน)</label>
@@ -302,6 +302,16 @@
         </div>
       </div>
     `;
+    const unitInput = body.querySelector('#f-unit');
+    const stockInput = body.querySelector('#f-stock');
+    const syncStockStep = () => {
+      const weighted = /^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(unitInput.value || '').trim());
+      stockInput.step = weighted ? '0.001' : '1';
+      body.querySelector('#f-cost-label').textContent = weighted ? 'ต้นทุน/กก. (บาท)' : 'ต้นทุน/หน่วย (บาท)';
+      body.querySelector('#f-sell-label').textContent = weighted ? 'ราคาขาย/กก. (บาท)' : 'ราคาขาย/หน่วย (บาท)';
+    };
+    unitInput.addEventListener('input', syncStockStep);
+    syncStockStep();
     const preview = body.querySelector('#img-preview');
     const updPreview = () => {
       if (pendingImg) preview.innerHTML = `<img src="${pendingImg}" style="width:100%;height:100%;object-fit:contain;">`;
@@ -483,11 +493,11 @@
     const body = document.createElement('div');
     body.innerHTML = `
       <p class="body mb">เพิ่มสต็อกให้ <b>${U.esc(p.name)}</b> (ปัจจุบัน ${U.fmtInt(p.stock)} ${U.esc(p.unit || 'ชิ้น')})</p>
-      <div class="field"><label>จำนวนที่เพิ่ม</label><input class="input" id="r-qty" type="number" min="1" value="1"></div>
+      <div class="field"><label>จำนวนที่เพิ่ม</label><input class="input" id="r-qty" type="number" min="0.001" step="${/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(p.unit || '').trim()) ? '0.001' : '1'}" value="1"></div>
     `;
     const saveBtn = UI.modalBtn('เพิ่มสต็อก', 'btn-secondary btn-block btn-lg', async () => {
       const n = U.num(body.querySelector('#r-qty').value);
-      if (n <= 0) { UI.toast('ระบุจำนวนให้ถูกต้อง', 'error'); return; }
+      if (n <= 0 || (!/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(p.unit || '').trim()) && !Number.isInteger(n))) { UI.toast('ระบุจำนวนให้ถูกต้อง', 'error'); return; }
       if (saveBtn.disabled) return;
       saveBtn.disabled = true;
       saveBtn.innerHTML = UI.icon('progress_activity', 'spin') + ' กำลังเพิ่ม...';

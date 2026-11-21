@@ -156,7 +156,7 @@
             <tr>
               <td class="label">${i + 1}</td>
               <td class="title">${U.esc(b.name)}</td>
-              <td style="text-align:right;">${U.fmtInt(b.qty)}</td>
+              <td style="text-align:right;">${U.fmtInt(b.qty)} ${U.esc(b.unit || '')}</td>
               <td style="text-align:right;">${U.fmtMoney(b.revenue)}</td>
               <td style="text-align:right;color:var(--secondary);">${U.fmtMoney(b.profit)}</td>
             </tr>`).join('')}
@@ -198,7 +198,7 @@
     body.innerHTML = `
       <div class="mb"><div class="h3">${U.esc(s.code)}</div><div class="caption">${U.fmtDateTime(s.date)}</div></div>
       <div class="list mb">
-        ${items.map((it) => `<div class="list-row"><div style="flex:1;"><div class="label">${U.esc(it.name)}</div><div class="caption">${it.qty} × ${U.fmtMoney(it.sell)}</div></div><div class="label">${U.fmtMoney(it.qty * it.sell)}</div></div>`).join('')}
+        ${items.map((it) => `<div class="list-row"><div style="flex:1;"><div class="label">${U.esc(it.name)}</div><div class="caption">${U.fmtInt(it.qty)} ${U.esc(it.unit || 'ชิ้น')} × ${U.fmtMoney(it.sell)}${/^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(it.unit || '').trim()) ? '/กก.' : ''}</div></div><div class="label">${U.fmtMoney(it.qty * it.sell)}</div></div>`).join('')}
       </div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;"><span class="caption">รวม</span><span class="label">${U.fmtMoney(U.num(s.subtotal))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;"><span class="caption">ส่วนลด</span><span class="label">-${U.fmtMoney(U.num(s.discount))}</span></div>

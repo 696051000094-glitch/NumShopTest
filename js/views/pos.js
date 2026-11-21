@@ -9,7 +9,9 @@
 
   const cartById = (id) => cart.find((c) => String(c.id) === String(id));
   const cartTotal = () => cart.reduce((a, c) => a + U.num(Store.productById(c.id).sell) * c.qty, 0);
-  const cartCount = () => cart.reduce((a, c) => a + c.qty, 0);
+  const cartCount = () => cart.length;
+  const isWeightProduct = (p) => /^(กก\.?|กิโลกรัม|kg|kilogram)$/i.test(String(p && p.unit || '').trim());
+  const fmtQty = (qty, weighted) => weighted ? Number(qty).toLocaleString('th-TH', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : U.fmtInt(qty);
 
   function render(container) {
     container.innerHTML = `
@@ -94,7 +96,7 @@
           </div>
           <div class="product-info">
             <div class="product-name line-clamp-2">${U.esc(p.name)}</div>
-            <div class="product-price">${U.fmtMoney(p.sell)}</div>
+            <div class="product-price">${U.fmtMoney(p.sell)}${isWeightProduct(p) ? ' / กก.' : ''}</div>
             <div class="product-stock ${out ? 'is-out' : low ? 'is-low' : ''}">
               ${UI.icon(out ? 'error' : low ? 'warning' : 'inventory_2')}
               <span>${out ? 'สินค้าหมด' : low ? 'เหลือน้อย ' + U.fmtInt(stock) + ' ' + U.esc(p.unit || 'ชิ้น') : 'คงเหลือ ' + U.fmtInt(stock) + ' ' + U.esc(p.unit || 'ชิ้น')}</span>
@@ -107,6 +109,7 @@
   function addToCart(id) {
     const p = Store.productById(id);
     if (!p) return;
+    if (isWeightProduct(p)) { openWeightEntry(p); return; }
     const stock = U.num(p.stock);
     const cur = cartById(id);
     if (stock <= 0) { UI.toast(p.name + ' หมดสต็อก', 'error'); return; }
@@ -116,6 +119,46 @@
     announce(p.name + ' ในตะกร้า ' + (cur ? cur.qty : 1) + ' ชิ้น');
     const view = document.getElementById('view-pos');
     if (view) { drawGrid(view); updateCartUI(view); }
+  }
+
+  function openWeightEntry(p, editing) {
+    const current = cartById(p.id);
+    const body = document.createElement('div');
+    body.innerHTML = `
+      <p class="body mb">${U.esc(p.name)} · ราคาขาย ${U.fmtMoney(p.sell)} / กก.</p>
+      <div class="field">
+        <label for="weight-qty">น้ำหนัก (กิโลกรัม)</label>
+        <input class="input" id="weight-qty" type="number" min="0.001" max="${U.num(p.stock)}" step="0.001" inputmode="decimal" placeholder="เช่น 0.850" value="${editing && current ? current.qty : ''}" autofocus>
+        <p class="caption">ชั่งจากเครื่องชั่งแล้วกรอกน้ำหนัก เช่น 0.850 กก.</p>
+        <p class="field-error" id="weight-error" aria-live="polite"></p>
+      </div>
+      <div class="card card-body"><div style="display:flex;justify-content:space-between"><span class="caption">ยอดตามน้ำหนัก</span><b id="weight-total">฿0.00</b></div></div>`;
+    const qtyInput = body.querySelector('#weight-qty');
+    const update = () => {
+      const qty = Number(qtyInput.value);
+      const valid = Number.isFinite(qty) && qty > 0 && qty <= U.num(p.stock);
+      body.querySelector('#weight-total').textContent = U.fmtMoney(valid ? qty * U.num(p.sell) : 0);
+      body.querySelector('#weight-error').textContent = qty > U.num(p.stock) ? 'น้ำหนักเกินสต็อกคงเหลือ ' + fmtQty(p.stock, true) + ' กก.' : (!valid && qty <= U.num(p.stock) ? 'กรุณากรอกน้ำหนักมากกว่า 0' : '');
+      return valid;
+    };
+    qtyInput.addEventListener('input', update);
+    const save = UI.modalBtn(editing ? 'ปรับน้ำหนัก' : 'เพิ่มลงตะกร้า', 'btn-secondary btn-block btn-lg', () => {
+      const qty = Math.round(Number(qtyInput.value) * 1000) / 1000;
+      if (!update()) { qtyInput.focus(); return; }
+      const existing = cartById(p.id);
+      const totalQty = (editing || !existing ? 0 : existing.qty) + qty;
+      if (totalQty > U.num(p.stock)) { body.querySelector('#weight-error').textContent = 'น้ำหนักรวมเกินสต็อกคงเหลือ'; return; }
+      if (existing) {
+        if (editing) existing.qty = qty;
+        else existing.qty += qty;
+      } else cart.push({ id: String(p.id), qty: qty });
+      UI.closeModal();
+      announce(p.name + ' ' + fmtQty(editing ? qty : totalQty, true) + ' กิโลกรัม');
+      const view = document.getElementById('view-pos');
+      if (view) { drawGrid(view); updateCartUI(view); }
+    });
+    UI.openModal({ title: editing ? 'แก้ไขน้ำหนัก' : 'กรอกน้ำหนักที่ชั่งได้', body, foot: [save] });
+    update();
   }
 
   function changeQty(id, delta) {
@@ -156,13 +199,10 @@
           <div class="thumb">${p.imgId ? `<img loading="lazy" src="${U.imgUrl(p.imgId)}" alt="">` : UI.icon('shopping_basket')}</div>
           <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;">
             <div class="label truncate">${U.esc(p.name)}</div>
+            <div class="caption">${isWeightProduct(p) ? fmtQty(c.qty, true) + ' กก. × ' + U.fmtMoney(p.sell) + '/กก.' : fmtQty(c.qty, false) + ' × ' + U.fmtMoney(p.sell)}</div>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
               <span class="price-sm text-primary">${U.fmtMoney(p.sell * c.qty)}</span>
-              <div class="stepper">
-                <button type="button" data-cart-minus="${U.esc(c.id)}" aria-label="ลดจำนวน ${U.esc(p.name)}">${UI.icon('remove')}</button>
-                <span>${c.qty}</span>
-                <button type="button" data-cart-plus="${U.esc(c.id)}" aria-label="เพิ่มจำนวน ${U.esc(p.name)}">${UI.icon('add')}</button>
-              </div>
+              ${isWeightProduct(p) ? `<button type="button" class="btn btn-ghost btn-sm" data-weight-edit="${U.esc(c.id)}">${UI.icon('edit')} แก้น้ำหนัก</button>` : `<div class="stepper"><button type="button" data-cart-minus="${U.esc(c.id)}" aria-label="ลดจำนวน ${U.esc(p.name)}">${UI.icon('remove')}</button><span>${c.qty}</span><button type="button" data-cart-plus="${U.esc(c.id)}" aria-label="เพิ่มจำนวน ${U.esc(p.name)}">${UI.icon('add')}</button></div>`}
             </div>
           </div>
         </div>`;
@@ -249,6 +289,9 @@
       const rm = e.target.closest('[data-cart-remove]');
       if (rm) { cart = cart.filter((c) => String(c.id) !== rm.dataset.cartRemove); const v = document.getElementById('view-pos'); drawGrid(v); updateCartUI(v); return; }
 
+      const weightEdit = e.target.closest('[data-weight-edit]');
+      if (weightEdit) { const p = Store.productById(weightEdit.dataset.weightEdit); if (p) openWeightEntry(p, true); return; }
+
       const minus = e.target.closest('[data-cart-minus]');
       if (minus) { changeQty(minus.dataset.cartMinus, -1); return; }
       const plus = e.target.closest('[data-cart-plus]');
@@ -269,6 +312,8 @@
     body.addEventListener('click', (e) => {
       const rm = e.target.closest('[data-cart-remove]');
       if (rm) { cart = cart.filter((c) => String(c.id) !== rm.dataset.cartRemove); const v = document.getElementById('view-pos'); drawGrid(v); updateCartUI(v); body.querySelector('.cart-items').innerHTML = cartPanelHTML('sheet'); return; }
+      const weightEdit = e.target.closest('[data-weight-edit]');
+      if (weightEdit) { const p = Store.productById(weightEdit.dataset.weightEdit); if (p) { UI.closeModal(); openWeightEntry(p, true); } return; }
       const minus = e.target.closest('[data-cart-minus]');
       if (minus) { changeQty(minus.dataset.cartMinus, -1); body.querySelector('.cart-items').innerHTML = cartPanelHTML('sheet'); return; }
       const plus = e.target.closest('[data-cart-plus]');
@@ -420,8 +465,11 @@
       </div>
       <div class="list mb">
         ${sale.items.map((it) => {
-          const p = Store.productById(it.id) || { name: '?', sell: it.sell };
-          return `<div class="list-row"><div style="flex:1"><div class="label">${U.esc(p.name)}</div><div class="caption">${it.qty} × ${U.fmtMoney(p.sell)}</div></div><div class="label">${U.fmtMoney(it.qty * p.sell)}</div></div>`;
+          const p = Store.productById(it.id) || { name: '?', sell: it.sell, unit: it.unit };
+          const unit = it.unit || p.unit || 'ชิ้น';
+          const weighted = isWeightProduct({ unit });
+          const price = U.num(it.sell);
+          return `<div class="list-row"><div style="flex:1"><div class="label">${U.esc(p.name)}</div><div class="caption">${fmtQty(it.qty, weighted)} ${U.esc(unit)} × ${U.fmtMoney(price)}${weighted ? '/กก.' : ''}</div></div><div class="label">${U.fmtMoney(it.qty * price)}</div></div>`;
         }).join('')}
       </div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;"><span class="caption">รวม</span><span class="label">${U.fmtMoney(total + discount)}</span></div>
@@ -436,8 +484,11 @@
 
   function printReceipt(storeName, sale, total, discount, payment) {
     const rows = sale.items.map((it) => {
-      const p = Store.productById(it.id) || { name: '?', sell: it.sell };
-      return `<tr><td>${U.esc(p.name)}</td><td style="text-align:center;">${it.qty}</td><td style="text-align:right;">${U.fmtMoney(p.sell)}</td><td style="text-align:right;">${U.fmtMoney(it.qty * p.sell)}</td></tr>`;
+      const p = Store.productById(it.id) || { name: '?', sell: it.sell, unit: it.unit };
+      const unit = it.unit || p.unit || 'ชิ้น';
+      const weighted = isWeightProduct({ unit });
+      const price = U.num(it.sell);
+      return `<tr><td>${U.esc(p.name)}</td><td style="text-align:center;">${fmtQty(it.qty, weighted)} ${U.esc(unit)}</td><td style="text-align:right;">${U.fmtMoney(price)}${weighted ? '/กก.' : ''}</td><td style="text-align:right;">${U.fmtMoney(it.qty * price)}</td></tr>`;
     }).join('');
     const html = `
       <div class="print-area">
